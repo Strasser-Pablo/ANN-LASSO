@@ -50,6 +50,7 @@ for h in range(9):
         y_val=pd.DataFrame(y_val)
         y_test=pd.DataFrame(y_test)
         
+        os.makedirs(dir_name+'s'+str(s),exist_ok=True)
         x_train.to_excel(dir_name+'s'+str(s)+'/'+'x_train_'+str(simu)+'.xlsx',header=False,index=False)
         x_val.to_excel(dir_name+'s'+str(s)+'/'+'x_val_'+str(simu)+'.xlsx',header=False,index=False)
         x_test.to_excel(dir_name+'s'+str(s)+'/'+'x_test_'+str(simu)+'.xlsx',header=False,index=False)

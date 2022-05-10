@@ -8,7 +8,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 def activation_function(mu):
     M=20
-    return (1/M)*(tf.nn.softplus(tf.cast(M*(mu+1.0),tf.float64))-np.log(1.0+np.exp(M)))
+    return (1/M)*(tf.nn.softplus(tf.cast(M*(mu+1.0),tf.float32))-np.log(1.0+np.exp(M)))
 
 
 def lambda_qut_sann_regression(inputx,nSample=100000,miniBatchSize=500,alpha=0.05,option='quantile'):
@@ -22,7 +22,7 @@ def lambda_qut_sann_regression(inputx,nSample=100000,miniBatchSize=500,alpha=0.0
     
     for index in range(nSample//miniBatchSize+offset):
         # loc and scale could be anything since the statistics is pivotal
-        ySample =np.random.normal(loc=0., scale=1, size=(n, 1,miniBatchSize))  
+        ySample =np.random.normal(loc=0., scale=1, size=(n, 1,miniBatchSize)).astype(np.float32) 
         yBar =np.mean(ySample, axis=0)
         normFactor = tf.sqrt(tf.reduce_sum(tf.square(yBar-ySample), axis=0))
         xySum = tf.reduce_sum((ySample - yBar) *np.repeat(np.expand_dims(inputx, axis=2), miniBatchSize, axis=2), axis=0).numpy()
@@ -32,7 +32,7 @@ def lambda_qut_sann_regression(inputx,nSample=100000,miniBatchSize=500,alpha=0.0
         with tf.GradientTape() as g:
             g.watch(x)
             y = activation_function(x)
-        dy_dx = tf.cast(g.gradient(y,x), tf.float64) 
+        dy_dx = tf.cast(g.gradient(y,x), tf.float32) 
 
         stat = dy_dx / normFactor * infnorm
 
@@ -62,14 +62,14 @@ def TFmodel(Xsample,Ysample,p2,activation_function,lamb,learningRate,withSD,
     if b2_ini is None:
         b2_ini = np.random.normal(loc=0., scale=iniscale, size=(1,1))
                  
-    w1 = tf.Variable(w1_ini ,shape=(p2,p1), trainable=True)
-    w2 = tf.Variable(w2_ini ,shape=(1,p2), trainable=True)
-    b2 = tf.Variable(b2_ini ,shape=(1,1), trainable=True)
+    w1 = tf.Variable(w1_ini ,shape=(p2,p1), trainable=True,dtype=tf.float32)
+    w2 = tf.Variable(w2_ini ,shape=(1,p2), trainable=True,dtype=tf.float32)
+    b2 = tf.Variable(b2_ini ,shape=(1,1), trainable=True,dtype=tf.float32)
     
     t=1        
-    w1_y=tf.Variable(w1_ini ,shape=(p2,p1), trainable=True)
-    w2_y=tf.Variable(w2_ini ,shape=(1,p2), trainable=True)
-    b2_y=tf.Variable(b2_ini ,shape=(1,1), trainable=True)
+    w1_y=tf.Variable(w1_ini ,shape=(p2,p1), trainable=True,dtype=tf.float32)
+    w2_y=tf.Variable(w2_ini ,shape=(1,p2), trainable=True,dtype=tf.float32)
+    b2_y=tf.Variable(b2_ini ,shape=(1,1), trainable=True,dtype=tf.float32)
 
     def evaluate(examx, examy, ifUpdate=True, ifISTA=False):
         nonlocal w1
@@ -79,13 +79,14 @@ def TFmodel(Xsample,Ysample,p2,activation_function,lamb,learningRate,withSD,
         nonlocal w2_y
         nonlocal b2_y
         nonlocal t
+
         # new structure in TF2.0 to track the parts of computation that will need backprop
         with tf.GradientTape(persistent=True) as g:
             g.watch([w1_y,w2_y,b2_y])
             w1X=tf.matmul(w1_y,tf.transpose(examx))
-            w2_l2normalized_1=tf.nn.l2_normalize(tf.cast(w2_y,tf.float64),1)
-            yhat =tf.matmul(w2_l2normalized_1,activation_function(w1X))+tf.matmul(b2_y,np.ones([1,n]))
-            bareCost = tf.sqrt(tf.cast(tf.reduce_sum(tf.square(yhat-examy),axis=1),tf.float64)) # sqrt Lasso
+            w2_l2normalized_1=tf.nn.l2_normalize(tf.cast(w2_y,tf.float32),1)
+            yhat =tf.matmul(w2_l2normalized_1,activation_function(w1X))+tf.matmul(b2_y,np.ones([1,n],dtype=np.float32))
+            bareCost = tf.sqrt(tf.cast(tf.reduce_sum(tf.square(yhat-examy),axis=1),tf.float32)) # sqrt Lasso
             cost=bareCost + lamb*tf.reduce_sum(tf.abs(w1_y))
         if not (ifISTA):
             w1_gra   = g.gradient(cost, w1_y)
@@ -123,9 +124,9 @@ def TFmodel(Xsample,Ysample,p2,activation_function,lamb,learningRate,withSD,
             t=t_1
             
             w1X_atProposition=tf.matmul(w1_atProposition ,tf.transpose(examx))
-            w2_normalized_atProposition=tf.nn.l2_normalize(tf.cast(w2_atProposition,tf.float64),1).numpy()
+            w2_normalized_atProposition=tf.nn.l2_normalize(tf.cast(w2_atProposition,tf.float32),1).numpy()
             yhat_atProposition =tf.matmul(w2_normalized_atProposition,activation_function(w1X_atProposition))+b2_atProposition
-            bareCost_atProposition = tf.sqrt(tf.cast(tf.reduce_sum(tf.square(yhat_atProposition-examy),axis=1),tf.float64))
+            bareCost_atProposition = tf.sqrt(tf.cast(tf.reduce_sum(tf.square(yhat_atProposition-examy),axis=1),tf.float32))
             cost_atProposition=bareCost_atProposition +lamb*tf.reduce_sum(tf.abs(w1_atProposition))
         return cost_atProposition
     
@@ -167,7 +168,7 @@ def TFmodel(Xsample,Ysample,p2,activation_function,lamb,learningRate,withSD,
             epoch += 1
             
     w1X=tf.matmul(w1,tf.transpose(Xsample))
-    w2_l2normalized=tf.nn.l2_normalize(tf.cast(w2,tf.float64),1)
+    w2_l2normalized=tf.nn.l2_normalize(tf.cast(w2,tf.float32),1)
     yhat=tf.matmul(w2_l2normalized,activation_function(w1X))+tf.matmul(b2,np.ones([1,n]))
     yhat=tf.transpose(yhat)
     
